@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Scan → Input → Excel</title>
+  <title>Scan → Quantity → Excel</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- ZXing -->
@@ -22,9 +22,12 @@
       margin-bottom: 10px;
     }
 
+    /* Smaller camera window */
     video {
       width: 100%;
       max-width: 420px;
+      height: 180px;
+      object-fit: cover;
       border-radius: 10px;
       border: 2px solid #ccc;
     }
@@ -79,17 +82,23 @@
       padding: 20px;
       border-radius: 10px;
       width: 90%;
-      max-width: 320px;
+      max-width: 340px;
     }
 
     .modal-box h3 {
       margin-top: 0;
     }
 
-    .modal-box input {
+    .modal-box label {
+      font-size: 13px;
+      font-weight: bold;
+    }
+
+    .modal-box input,
+    .modal-box select {
       width: 100%;
       padding: 8px;
-      margin-bottom: 10px;
+      margin: 6px 0 12px;
       font-size: 14px;
     }
   </style>
@@ -97,8 +106,8 @@
 
 <body>
 
-<h1>📷 Scan → Input → Excel</h1>
-<p>Scan a barcode, enter details, save to Excel.</p>
+<h1>📷 Scan → Quantity → Excel</h1>
+<p>Scan barcode, enter quantity and unit, save to Excel.</p>
 
 <video id="video" autoplay muted></video>
 
@@ -115,7 +124,8 @@
     <tr>
       <th>#</th>
       <th>Barcode</th>
-      <th>Input</th>
+      <th>Quantity</th>
+      <th>Unit</th>
       <th>Timestamp</th>
     </tr>
   </thead>
@@ -126,8 +136,19 @@
 <div class="modal" id="inputModal">
   <div class="modal-box">
     <h3>Enter Details</h3>
+
     <p><strong>Barcode:</strong> <span id="barcodeText"></span></p>
-    <input id="userInput" placeholder="Enter quantity / notes" />
+
+    <label>Quantity *</label>
+    <input id="quantityInput" type="number" min="1" placeholder="Enter quantity" />
+
+    <label>Unit *</label>
+    <select id="unitInput">
+      <option value="">Select unit</option>
+      <option value="Inch">Inch</option>
+      <option value="Sheets">Sheets</option>
+    </select>
+
     <button class="start" onclick="saveEntry()">Save</button>
   </div>
 </div>
@@ -138,7 +159,8 @@
   const tableBody = document.getElementById("tableBody");
   const modal = document.getElementById("inputModal");
   const barcodeText = document.getElementById("barcodeText");
-  const userInput = document.getElementById("userInput");
+  const quantityInput = document.getElementById("quantityInput");
+  const unitInput = document.getElementById("unitInput");
 
   const codeReader = new ZXing.BrowserMultiFormatReader();
   let scanData = [];
@@ -154,7 +176,7 @@
       if (result) {
         stopScan();
         currentBarcode = result.text;
-        showInputModal(currentBarcode);
+        showModal(currentBarcode);
       }
     });
   }
@@ -165,24 +187,28 @@
     statusEl.textContent = "Status: Stopped";
   }
 
-  function showInputModal(code) {
+  function showModal(code) {
     barcodeText.textContent = code;
-    userInput.value = "";
+    quantityInput.value = "";
+    unitInput.value = "";
     modal.style.display = "flex";
-    userInput.focus();
+    quantityInput.focus();
   }
 
   function saveEntry() {
-    const inputValue = userInput.value.trim();
-    if (!inputValue) {
-      alert("Please enter a value");
+    const quantity = quantityInput.value.trim();
+    const unit = unitInput.value;
+
+    if (!quantity || !unit) {
+      alert("Both Quantity and Unit are required");
       return;
     }
 
     const row = {
       Index: scanData.length + 1,
       Barcode: currentBarcode,
-      Input: inputValue,
+      Quantity: quantity,
+      Unit: unit,
       Timestamp: new Date().toLocaleString()
     };
 
@@ -198,7 +224,8 @@
     tr.innerHTML = `
       <td>${row.Index}</td>
       <td>${row.Barcode}</td>
-      <td>${row.Input}</td>
+      <td>${row.Quantity}</td>
+      <td>${row.Unit}</td>
       <td>${row.Timestamp}</td>
     `;
     tableBody.appendChild(tr);
