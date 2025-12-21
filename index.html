@@ -1,89 +1,57 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-  <meta charset="UTF-8" />
-
-  <!-- iPhone-safe viewport (NO zoom / NO resize) -->
-  <meta name="viewport"
-        content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no" />
-
+  <meta charset="UTF-8">
   <title>Scan → Quantity → Excel</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 
-  <!-- ZXing -->
+  <!-- ZXing for barcode scanning -->
   <script src="https://unpkg.com/@zxing/library@latest"></script>
 
-  <!-- SheetJS -->
+  <!-- SheetJS for Excel export -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
-  <!-- PWA Manifest (INLINE) -->
-  <link rel="manifest"
-        href='data:application/json,{
-          "name":"Scan to Excel",
-          "short_name":"ScanExcel",
-          "start_url":".",
-          "display":"standalone",
-          "background_color":"#f4f6f8",
-          "theme_color":"#2563eb",
-          "icons":[
-            {"src":"https://cdn-icons-png.flaticon.com/512/2920/2920244.png","sizes":"192x192","type":"image/png"},
-            {"src":"https://cdn-icons-png.flaticon.com/512/2920/2920244.png","sizes":"512x512","type":"image/png"}
-          ]
-        }'>
-
   <style>
-    /* ---- GLOBAL iPhone LOCK ---- */
     html, body {
       width: 100%;
       height: 100%;
-      margin: 0;
       overflow-x: hidden;
+      touch-action: manipulation;
+      margin: 0;
+      padding: 20px;
       font-family: Arial, sans-serif;
       background: #f4f6f8;
-      touch-action: manipulation;
     }
 
-    body {
-      padding: 16px;
-    }
+    h1 { margin-bottom: 10px; }
 
-    h1 {
-      margin: 8px 0;
-    }
-
-    /* ---- CAMERA ---- */
+    /* Compact camera window */
     video {
       width: 100%;
       max-width: 420px;
-      height: 170px; /* reduced height */
+      height: 180px;
       object-fit: cover;
       border-radius: 10px;
       border: 2px solid #ccc;
     }
 
-    /* ---- BUTTONS ---- */
     button {
       padding: 10px 16px;
-      font-size: 14px;
       border: none;
       border-radius: 6px;
       cursor: pointer;
+      font-size: 14px;
       margin-right: 6px;
     }
 
-    .start { background: #2563eb; color: #fff; }
-    .stop { background: #ef4444; color: #fff; }
-    .export { background: #16a34a; color: #fff; }
+    .start { background: #2563eb; color: white; }
+    .stop { background: #ef4444; color: white; }
+    .export { background: #16a34a; color: white; }
 
-    .status {
-      margin-top: 10px;
-      font-size: 14px;
-    }
-
-    /* ---- TABLE ---- */
     table {
       width: 100%;
       border-collapse: collapse;
-      margin-top: 16px;
+      margin-top: 20px;
       background: white;
     }
 
@@ -93,11 +61,11 @@
       font-size: 13px;
     }
 
-    th {
-      background: #f1f5f9;
-    }
+    th { background: #f1f5f9; }
 
-    /* ---- MODAL ---- */
+    .status { margin-top: 10px; font-size: 14px; }
+
+    /* Modal */
     .modal {
       position: fixed;
       inset: 0;
@@ -105,6 +73,7 @@
       display: none;
       align-items: center;
       justify-content: center;
+      z-index: 999;
     }
 
     .modal-box {
@@ -115,10 +84,7 @@
       max-width: 340px;
     }
 
-    .modal-box h3 {
-      margin-top: 0;
-    }
-
+    .modal-box h3 { margin-top: 0; }
     .modal-box label {
       font-size: 13px;
       font-weight: bold;
@@ -126,28 +92,25 @@
 
     .modal-box input,
     .modal-box select {
-      font-size: 16px; /* CRITICAL: prevents iOS zoom */
+      width: 100%;
       padding: 8px;
       margin: 6px 0 12px;
+      font-size: 16px; /* Critical for iOS numeric keypad */
     }
 
-    /* Quantity width reduced */
     .quantity-field {
-      width: 80%;
+      width: 80%; /* Reduced width */
     }
 
-    .modal-box select {
-      width: 100%;
-    }
   </style>
 </head>
 
 <body>
 
 <h1>📷 Scan → Quantity → Excel</h1>
-<p>Scan barcode, enter quantity and unit, export locally.</p>
+<p>Scan barcode, enter quantity and unit, save to Excel.</p>
 
-<video id="video" autoplay muted playsinline></video>
+<video id="video" autoplay muted></video>
 
 <br><br>
 
@@ -178,13 +141,7 @@
     <p><strong>Barcode:</strong> <span id="barcodeText"></span></p>
 
     <label>Quantity *</label>
-    <input id="quantityInput"
-           class="quantity-field"
-           type="number"
-           inputmode="numeric"
-           pattern="[0-9]*"
-           min="1"
-           placeholder="Quantity" />
+    <input id="quantityInput" class="quantity-field" type="number" min="1" placeholder="Enter quantity" inputmode="numeric" pattern="[0-9]*" />
 
     <label>Unit *</label>
     <select id="unitInput">
@@ -198,7 +155,6 @@
 </div>
 
 <script>
-  /* ---- BARCODE LOGIC ---- */
   const video = document.getElementById("video");
   const statusEl = document.getElementById("status");
   const tableBody = document.getElementById("tableBody");
@@ -217,11 +173,11 @@
     scanning = true;
     statusEl.textContent = "Status: Scanning...";
 
-    codeReader.decodeFromVideoDevice(null, video, (result) => {
+    codeReader.decodeFromVideoDevice(null, video, (result, err) => {
       if (result) {
         stopScan();
         currentBarcode = result.text;
-        showModal();
+        showModal(currentBarcode);
       }
     });
   }
@@ -232,27 +188,28 @@
     statusEl.textContent = "Status: Stopped";
   }
 
-  function showModal() {
-    barcodeText.textContent = currentBarcode;
+  function showModal(code) {
+    barcodeText.textContent = code;
     quantityInput.value = "";
     unitInput.value = "";
     modal.style.display = "flex";
-    setTimeout(() => quantityInput.focus(), 300);
+    // Focus numeric input to auto open keypad
+    quantityInput.focus();
   }
 
   function saveEntry() {
-    const qty = quantityInput.value.trim();
+    const quantity = quantityInput.value.trim();
     const unit = unitInput.value;
 
-    if (!qty || !unit) {
-      alert("Quantity and Unit are required");
+    if (!quantity || !unit) {
+      alert("Both Quantity and Unit are required");
       return;
     }
 
     const row = {
       Index: scanData.length + 1,
       Barcode: currentBarcode,
-      Quantity: qty,
+      Quantity: quantity,
       Unit: unit,
       Timestamp: new Date().toLocaleString()
     };
@@ -261,7 +218,7 @@
     appendRow(row);
 
     modal.style.display = "none";
-    startScan();
+    startScan(); // resume scanning automatically
   }
 
   function appendRow(row) {
@@ -277,7 +234,7 @@
   }
 
   function exportExcel() {
-    if (!scanData.length) {
+    if (scanData.length === 0) {
       alert("No data to export");
       return;
     }
@@ -286,17 +243,8 @@
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "Scans");
 
-    XLSX.writeFile(wb, `scans_${new Date().toISOString().split("T")[0]}.xlsx`);
-  }
-
-  /* ---- INLINE SERVICE WORKER (PWA) ---- */
-  if ("serviceWorker" in navigator) {
-    const swCode = `
-      self.addEventListener('install', e => self.skipWaiting());
-      self.addEventListener('fetch', e => {});
-    `;
-    const blob = new Blob([swCode], { type: "text/javascript" });
-    navigator.serviceWorker.register(URL.createObjectURL(blob));
+    const fileName = `scans_${new Date().toISOString().split("T")[0]}.xlsx`;
+    XLSX.writeFile(wb, fileName);
   }
 </script>
 
