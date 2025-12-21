@@ -2,20 +2,19 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>Scan to Excel (Local)</title>
+  <title>Scan → Input → Excel</title>
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-  <!-- ZXing for barcode scanning -->
+  <!-- ZXing -->
   <script src="https://unpkg.com/@zxing/library@latest"></script>
 
-  <!-- SheetJS for Excel export -->
+  <!-- SheetJS -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
   <style>
     body {
       font-family: Arial, sans-serif;
       background: #f4f6f8;
-      margin: 0;
       padding: 20px;
     }
 
@@ -23,40 +22,25 @@
       margin-bottom: 10px;
     }
 
-    #video {
+    video {
       width: 100%;
       max-width: 420px;
       border-radius: 10px;
       border: 2px solid #ccc;
     }
 
-    .controls {
-      margin: 15px 0;
-    }
-
     button {
       padding: 10px 16px;
-      font-size: 14px;
       border: none;
       border-radius: 6px;
       cursor: pointer;
-      margin-right: 8px;
+      font-size: 14px;
+      margin-right: 6px;
     }
 
-    .start {
-      background: #2563eb;
-      color: white;
-    }
-
-    .stop {
-      background: #ef4444;
-      color: white;
-    }
-
-    .export {
-      background: #16a34a;
-      color: white;
-    }
+    .start { background: #2563eb; color: white; }
+    .stop { background: #ef4444; color: white; }
+    .export { background: #16a34a; color: white; }
 
     table {
       width: 100%;
@@ -69,7 +53,6 @@
       border: 1px solid #ddd;
       padding: 8px;
       font-size: 13px;
-      text-align: left;
     }
 
     th {
@@ -79,112 +62,162 @@
     .status {
       margin-top: 10px;
       font-size: 14px;
-      color: #374151;
+    }
+
+    /* Modal */
+    .modal {
+      position: fixed;
+      inset: 0;
+      background: rgba(0,0,0,0.5);
+      display: none;
+      align-items: center;
+      justify-content: center;
+    }
+
+    .modal-box {
+      background: white;
+      padding: 20px;
+      border-radius: 10px;
+      width: 90%;
+      max-width: 320px;
+    }
+
+    .modal-box h3 {
+      margin-top: 0;
+    }
+
+    .modal-box input {
+      width: 100%;
+      padding: 8px;
+      margin-bottom: 10px;
+      font-size: 14px;
     }
   </style>
 </head>
 
 <body>
 
-  <h1>📷 Scan to Excel (Local File)</h1>
-  <p>Use your camera to scan barcodes and export them to Excel.</p>
+<h1>📷 Scan → Input → Excel</h1>
+<p>Scan a barcode, enter details, save to Excel.</p>
 
-  <video id="video" autoplay muted></video>
+<video id="video" autoplay muted></video>
 
-  <div class="controls">
-    <button class="start" onclick="startScan()">Start Scan</button>
-    <button class="stop" onclick="stopScan()">Stop Scan</button>
-    <button class="export" onclick="exportExcel()">Export Excel</button>
+<br><br>
+
+<button class="start" onclick="startScan()">Start Scan</button>
+<button class="stop" onclick="stopScan()">Stop Scan</button>
+<button class="export" onclick="exportExcel()">Export Excel</button>
+
+<div class="status" id="status">Status: Idle</div>
+
+<table>
+  <thead>
+    <tr>
+      <th>#</th>
+      <th>Barcode</th>
+      <th>Input</th>
+      <th>Timestamp</th>
+    </tr>
+  </thead>
+  <tbody id="tableBody"></tbody>
+</table>
+
+<!-- INPUT MODAL -->
+<div class="modal" id="inputModal">
+  <div class="modal-box">
+    <h3>Enter Details</h3>
+    <p><strong>Barcode:</strong> <span id="barcodeText"></span></p>
+    <input id="userInput" placeholder="Enter quantity / notes" />
+    <button class="start" onclick="saveEntry()">Save</button>
   </div>
+</div>
 
-  <div class="status" id="status">Status: Idle</div>
+<script>
+  const video = document.getElementById("video");
+  const statusEl = document.getElementById("status");
+  const tableBody = document.getElementById("tableBody");
+  const modal = document.getElementById("inputModal");
+  const barcodeText = document.getElementById("barcodeText");
+  const userInput = document.getElementById("userInput");
 
-  <table>
-    <thead>
-      <tr>
-        <th>#</th>
-        <th>Code</th>
-        <th>Format</th>
-        <th>Timestamp</th>
-      </tr>
-    </thead>
-    <tbody id="scanTable"></tbody>
-  </table>
+  const codeReader = new ZXing.BrowserMultiFormatReader();
+  let scanData = [];
+  let scanning = false;
+  let currentBarcode = "";
 
-  <script>
-    const videoElement = document.getElementById("video");
-    const statusEl = document.getElementById("status");
-    const tableBody = document.getElementById("scanTable");
+  function startScan() {
+    if (scanning) return;
+    scanning = true;
+    statusEl.textContent = "Status: Scanning...";
 
-    const codeReader = new ZXing.BrowserMultiFormatReader();
-    let scanData = [];
-    let scanning = false;
-
-    function startScan() {
-      if (scanning) return;
-
-      scanning = true;
-      statusEl.textContent = "Status: Scanning...";
-
-      codeReader.decodeFromVideoDevice(null, videoElement, (result, err) => {
-        if (result) {
-          addScan(result.text, result.getBarcodeFormat());
-        }
-      });
-    }
-
-    function stopScan() {
-      scanning = false;
-      codeReader.reset();
-      statusEl.textContent = "Status: Stopped";
-    }
-
-    function addScan(code, format) {
-      // Prevent duplicate scans in rapid succession
-      if (scanData.length > 0 && scanData[scanData.length - 1].Code === code) {
-        return;
+    codeReader.decodeFromVideoDevice(null, video, (result, err) => {
+      if (result) {
+        stopScan();
+        currentBarcode = result.text;
+        showInputModal(currentBarcode);
       }
+    });
+  }
 
-      const timestamp = new Date().toLocaleString();
+  function stopScan() {
+    scanning = false;
+    codeReader.reset();
+    statusEl.textContent = "Status: Stopped";
+  }
 
-      const row = {
-        Index: scanData.length + 1,
-        Code: code,
-        Format: format,
-        Timestamp: timestamp
-      };
+  function showInputModal(code) {
+    barcodeText.textContent = code;
+    userInput.value = "";
+    modal.style.display = "flex";
+    userInput.focus();
+  }
 
-      scanData.push(row);
-      renderRow(row);
+  function saveEntry() {
+    const inputValue = userInput.value.trim();
+    if (!inputValue) {
+      alert("Please enter a value");
+      return;
     }
 
-    function renderRow(row) {
-      const tr = document.createElement("tr");
+    const row = {
+      Index: scanData.length + 1,
+      Barcode: currentBarcode,
+      Input: inputValue,
+      Timestamp: new Date().toLocaleString()
+    };
 
-      tr.innerHTML = `
-        <td>${row.Index}</td>
-        <td>${row.Code}</td>
-        <td>${row.Format}</td>
-        <td>${row.Timestamp}</td>
-      `;
+    scanData.push(row);
+    appendRow(row);
 
-      tableBody.appendChild(tr);
+    modal.style.display = "none";
+    startScan();
+  }
+
+  function appendRow(row) {
+    const tr = document.createElement("tr");
+    tr.innerHTML = `
+      <td>${row.Index}</td>
+      <td>${row.Barcode}</td>
+      <td>${row.Input}</td>
+      <td>${row.Timestamp}</td>
+    `;
+    tableBody.appendChild(tr);
+  }
+
+  function exportExcel() {
+    if (scanData.length === 0) {
+      alert("No data to export");
+      return;
     }
 
-    function exportExcel() {
-      if (scanData.length === 0) {
-        alert("No data to export");
-        return;
-      }
+    const ws = XLSX.utils.json_to_sheet(scanData);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "Scans");
 
-      const worksheet = XLSX.utils.json_to_sheet(scanData);
-      const workbook = XLSX.utils.book_new();
-      XLSX.utils.book_append_sheet(workbook, worksheet, "Scans");
-
-      const fileName = `scans_${new Date().toISOString().split("T")[0]}.xlsx`;
-      XLSX.writeFile(workbook, fileName);
-    }
-  </script>
+    const fileName = `scans_${new Date().toISOString().split("T")[0]}.xlsx`;
+    XLSX.writeFile(wb, fileName);
+  }
+</script>
 
 </body>
 </html>
