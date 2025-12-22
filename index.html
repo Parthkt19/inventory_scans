@@ -4,12 +4,12 @@
   <meta charset="UTF-8">
   <title>Scan → Quantity → Excel</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
-  
+
   <!-- ZXing Library -->
   <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
   <!-- XLSX Library -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
-  
+
   <style>
     body { font-family: Arial, sans-serif; padding: 10px; text-align: center; }
     video { width: 100%; max-width: 400px; border: 1px solid #ccc; margin-bottom: 10px; }
@@ -80,6 +80,7 @@ let scanning = false;
 let currentBarcode = "";
 let scanData = [];
 
+// Start scanning
 async function startScan() {
   if (scanning) return;
   scanning = true;
@@ -88,20 +89,20 @@ async function startScan() {
   codeReader = new ZXing.BrowserMultiFormatReader();
 
   try {
-    const constraints = {
-      video: {
-        facingMode: "environment" // rear camera
-      }
-    };
-
+    const constraints = { video: { facingMode: "environment" } };
     const stream = await navigator.mediaDevices.getUserMedia(constraints);
     video.srcObject = stream;
 
     codeReader.decodeFromVideoDevice(null, video, (result, err) => {
       if (result) {
         stopScan();
-        currentBarcode = result.text;
-        showModal(currentBarcode);
+        currentBarcode = result.text.trim();
+        if (isValidBarcode(currentBarcode)) {
+          showModal(currentBarcode);
+        } else {
+          alert("Invalid barcode: " + currentBarcode);
+          startScan(); // resume scanning
+        }
       }
     });
   } catch (err) {
@@ -111,12 +112,21 @@ async function startScan() {
   }
 }
 
+// Stop scanning
 function stopScan() {
   scanning = false;
   if (codeReader) codeReader.reset();
   statusEl.textContent = "Status: Stopped";
 }
 
+// Validate barcode against your patterns
+function isValidBarcode(code) {
+  // Matches codes like 11X17CC100, 17.5X18PO70, 25X38CS1C12PT, etc.
+  const pattern = /^\d+(\.\d+)?X\d+[A-Z0-9]+(PT)?$/i;
+  return pattern.test(code);
+}
+
+// Show modal to enter quantity/unit
 function showModal(code) {
   barcodeText.textContent = code;
   quantityInput.value = "";
@@ -125,6 +135,7 @@ function showModal(code) {
   quantityInput.focus();
 }
 
+// Save entry
 function saveEntry() {
   const quantity = quantityInput.value.trim();
   const unit = unitInput.value;
@@ -149,6 +160,7 @@ function saveEntry() {
   startScan(); // resume scanning
 }
 
+// Append row to table
 function appendRow(row) {
   const tr = document.createElement("tr");
   tr.innerHTML = `
@@ -161,6 +173,7 @@ function appendRow(row) {
   tableBody.appendChild(tr);
 }
 
+// Export Excel
 function exportExcel() {
   if (scanData.length === 0) {
     alert("No data to export");
