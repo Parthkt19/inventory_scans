@@ -4,8 +4,12 @@
   <meta charset="UTF-8">
   <title>Scan → Quantity → Excel</title>
   <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  
+  <!-- ZXing Library -->
   <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
+  <!-- XLSX Library -->
   <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
+  
   <style>
     body { font-family: Arial, sans-serif; padding: 10px; text-align: center; }
     video { width: 100%; max-width: 400px; border: 1px solid #ccc; margin-bottom: 10px; }
@@ -22,8 +26,7 @@
 <h1>📷 Scan → Quantity → Excel</h1>
 <p>Scan barcode, enter quantity/unit, save to Excel.</p>
 
-<video id="video" autoplay muted></video>
-
+<video id="video" autoplay muted playsinline></video>
 <div class="status" id="status">Status: Idle</div>
 
 <button onclick="startScan()">Start Scan</button>
@@ -64,32 +67,36 @@
 </div>
 
 <script>
-  const video = document.getElementById("video");
-  const statusEl = document.getElementById("status");
-  const tableBody = document.getElementById("tableBody");
-  const modal = document.getElementById("inputModal");
-  const barcodeText = document.getElementById("barcodeText");
-  const quantityInput = document.getElementById("quantityInput");
-  const unitInput = document.getElementById("unitInput");
+const video = document.getElementById("video");
+const statusEl = document.getElementById("status");
+const tableBody = document.getElementById("tableBody");
+const modal = document.getElementById("inputModal");
+const barcodeText = document.getElementById("barcodeText");
+const quantityInput = document.getElementById("quantityInput");
+const unitInput = document.getElementById("unitInput");
 
-  // Initialize ZXing for Code128 only
-  const hints = new Map();
-  hints.set(ZXing.DecodeHintType.POSSIBLE_FORMATS, [ZXing.BarcodeFormat.CODE_128]);
-  const codeReader = new ZXing.BrowserMultiFormatReader(hints);
+let codeReader;
+let scanning = false;
+let currentBarcode = "";
+let scanData = [];
 
-  let scanData = [];
-  let scanning = false;
-  let currentBarcode = "";
+async function startScan() {
+  if (scanning) return;
+  scanning = true;
+  statusEl.textContent = "Status: Scanning...";
 
-  async function startScan() {
-    if (scanning) return;
-    scanning = true;
-    statusEl.textContent = "Status: Scanning...";
+  codeReader = new ZXing.BrowserMultiFormatReader();
 
-    // Select rear camera
+  try {
+    // Get video input devices
     const devices = await navigator.mediaDevices.enumerateDevices();
-    const rear = devices.find(d => d.kind === 'videoinput' && d.label.toLowerCase().includes('back'));
-    const deviceId = rear ? rear.deviceId : null;
+    let deviceId = null;
+    for (let d of devices) {
+      if (d.kind === 'videoinput') {
+        deviceId = d.deviceId;
+        if (d.label.toLowerCase().includes('back')) break; // prefer rear camera
+      }
+    }
 
     codeReader.decodeFromVideoDevice(deviceId, video, (result, err) => {
       if (result) {
@@ -98,71 +105,76 @@
         showModal(currentBarcode);
       }
     });
-  }
-
-  function stopScan() {
+  } catch (err) {
+    console.error("Camera error:", err);
+    alert("Could not access camera. Make sure to allow camera permissions.");
     scanning = false;
-    codeReader.reset();
-    statusEl.textContent = "Status: Stopped";
+  }
+}
+
+function stopScan() {
+  scanning = false;
+  if (codeReader) codeReader.reset();
+  statusEl.textContent = "Status: Stopped";
+}
+
+function showModal(code) {
+  barcodeText.textContent = code;
+  quantityInput.value = "";
+  unitInput.value = "";
+  modal.style.display = "flex";
+  quantityInput.focus();
+}
+
+function saveEntry() {
+  const quantity = quantityInput.value.trim();
+  const unit = unitInput.value;
+
+  if (!quantity || !unit) {
+    alert("Both Quantity and Unit are required");
+    return;
   }
 
-  function showModal(code) {
-    barcodeText.textContent = code;
-    quantityInput.value = "";
-    unitInput.value = "";
-    modal.style.display = "flex";
-    quantityInput.focus();
+  const row = {
+    Index: scanData.length + 1,
+    Barcode: currentBarcode,
+    Quantity: quantity,
+    Unit: unit,
+    Timestamp: new Date().toLocaleString()
+  };
+
+  scanData.push(row);
+  appendRow(row);
+
+  modal.style.display = "none";
+  startScan(); // resume scanning
+}
+
+function appendRow(row) {
+  const tr = document.createElement("tr");
+  tr.innerHTML = `
+    <td>${row.Index}</td>
+    <td>${row.Barcode}</td>
+    <td>${row.Quantity}</td>
+    <td>${row.Unit}</td>
+    <td>${row.Timestamp}</td>
+  `;
+  tableBody.appendChild(tr);
+}
+
+function exportExcel() {
+  if (scanData.length === 0) {
+    alert("No data to export");
+    return;
   }
 
-  function saveEntry() {
-    const quantity = quantityInput.value.trim();
-    const unit = unitInput.value;
+  const ws = XLSX.utils.json_to_sheet(scanData);
+  const wb = XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb, ws, "Scans");
 
-    if (!quantity || !unit) {
-      alert("Both Quantity and Unit are required");
-      return;
-    }
-
-    const row = {
-      Index: scanData.length + 1,
-      Barcode: currentBarcode,
-      Quantity: quantity,
-      Unit: unit,
-      Timestamp: new Date().toLocaleString()
-    };
-
-    scanData.push(row);
-    appendRow(row);
-
-    modal.style.display = "none";
-    startScan(); // resume scanning automatically
-  }
-
-  function appendRow(row) {
-    const tr = document.createElement("tr");
-    tr.innerHTML = `
-      <td>${row.Index}</td>
-      <td>${row.Barcode}</td>
-      <td>${row.Quantity}</td>
-      <td>${row.Unit}</td>
-      <td>${row.Timestamp}</td>
-    `;
-    tableBody.appendChild(tr);
-  }
-
-  function exportExcel() {
-    if (scanData.length === 0) {
-      alert("No data to export");
-      return;
-    }
-
-    const ws = XLSX.utils.json_to_sheet(scanData);
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Scans");
-
-    const fileName = `scans_${new Date().toISOString().split("T")[0]}.xlsx`;
-    XLSX.writeFile(wb, fileName);
-  }
+  const fileName = `scans_${new Date().toISOString().split("T")[0]}.xlsx`;
+  XLSX.writeFile(wb, fileName);
+}
 </script>
 
 </body>
