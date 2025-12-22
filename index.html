@@ -88,17 +88,16 @@ async function startScan() {
   codeReader = new ZXing.BrowserMultiFormatReader();
 
   try {
-    // Get video input devices
-    const devices = await navigator.mediaDevices.enumerateDevices();
-    let deviceId = null;
-    for (let d of devices) {
-      if (d.kind === 'videoinput') {
-        deviceId = d.deviceId;
-        if (d.label.toLowerCase().includes('back')) break; // prefer rear camera
+    const constraints = {
+      video: {
+        facingMode: "environment" // rear camera
       }
-    }
+    };
 
-    codeReader.decodeFromVideoDevice(deviceId, video, (result, err) => {
+    const stream = await navigator.mediaDevices.getUserMedia(constraints);
+    video.srcObject = stream;
+
+    codeReader.decodeFromVideoDevice(null, video, (result, err) => {
       if (result) {
         stopScan();
         currentBarcode = result.text;
