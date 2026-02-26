@@ -5,70 +5,260 @@
 <title>Scan → Quantity → Excel</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 
-<!-- ZXing Library -->
+<!-- ZXing -->
 <script src="https://cdn.jsdelivr.net/npm/@zxing/library@0.20.0/umd/index.min.js"></script>
-<!-- XLSX Library -->
+<!-- XLSX -->
 <script src="https://cdn.jsdelivr.net/npm/xlsx/dist/xlsx.full.min.js"></script>
 
 <style>
-  body { font-family: Arial, sans-serif; padding: 10px; text-align: center; }
-  video { width: 100%; max-width: 400px; border: 1px solid #ccc; margin-bottom: 10px; }
-  table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-  th, td { border: 1px solid #ccc; padding: 6px; text-align: center; }
-  
-  /* Modal Styles */
-  .modal { display: none; position: fixed; top:0; left:0; width:100%; height:100%; background: rgba(0,0,0,0.5); justify-content:center; align-items:center; }
-  .modal-box { background: #fff; padding: 20px; border-radius: 8px; width: 90%; max-width: 300px; text-align:left; position: relative; }
-  .close-btn { position: absolute; top: 8px; right: 10px; font-size: 18px; border: none; background: transparent; cursor: pointer; }
+:root {
+  --glass-bg: rgba(255,255,255,0.18);
+  --glass-border: rgba(255,255,255,0.35);
+  --accent: #4f46e5;
+  --accent-2: #22d3ee;
+  --danger: #ef4444;
+  --success: #22c55e;
+}
 
-  input, select { width: 100%; margin-bottom: 10px; padding: 6px; }
-  button { padding: 8px 12px; margin: 5px; cursor: pointer; }
+/* RESET */
+* { box-sizing: border-box; }
+
+/* BODY */
+body {
+  font-family: "Inter", system-ui, -apple-system, BlinkMacSystemFont, sans-serif;
+  min-height: 100vh;
+  margin: 0;
+  padding: 16px;
+  background: linear-gradient(135deg, #0f172a, #020617);
+  color: #fff;
+  display: flex;
+  justify-content: center;
+}
+
+/* APP CONTAINER */
+.app {
+  width: 100%;
+  max-width: 420px;
+}
+
+/* GLASS CARD */
+.glass {
+  background: var(--glass-bg);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--glass-border);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: 0 20px 50px rgba(0,0,0,0.35);
+}
+
+/* HEADER */
+h1 {
+  margin: 0 0 6px;
+  font-size: 1.6rem;
+  text-align: center;
+}
+p {
+  margin: 0 0 14px;
+  text-align: center;
+  opacity: 0.85;
+}
+
+/* VIDEO */
+video {
+  width: 100%;
+  border-radius: 14px;
+  border: 1px solid var(--glass-border);
+  margin-bottom: 10px;
+  animation: fadeIn 0.6s ease;
+}
+
+/* STATUS */
+.status {
+  text-align: center;
+  margin-bottom: 12px;
+  font-size: 0.9rem;
+  opacity: 0.9;
+}
+
+/* BUTTONS */
+.actions {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 10px;
+  margin-bottom: 16px;
+}
+
+button {
+  border: none;
+  border-radius: 14px;
+  padding: 10px;
+  font-weight: 600;
+  cursor: pointer;
+  color: #fff;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+  position: relative;
+  overflow: hidden;
+}
+
+button::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(circle at top left, rgba(255,255,255,0.35), transparent);
+  opacity: 0;
+  transition: opacity 0.3s;
+}
+button:hover::after { opacity: 1; }
+button:hover { transform: translateY(-2px); }
+
+.start { background: linear-gradient(135deg, var(--success), #16a34a); }
+.stop { background: linear-gradient(135deg, var(--danger), #b91c1c); }
+.export {
+  grid-column: span 3;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+  box-shadow: 0 0 0 rgba(79,70,229,0.6);
+}
+.export:hover {
+  box-shadow: 0 0 25px rgba(79,70,229,0.6);
+}
+
+/* TABLE */
+.table-wrap {
+  margin-top: 12px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+}
+
+thead th {
+  position: sticky;
+  top: 0;
+  background: rgba(0,0,0,0.45);
+  backdrop-filter: blur(10px);
+  padding: 8px;
+}
+
+tbody tr {
+  animation: rowIn 0.35s ease forwards;
+}
+
+td {
+  padding: 6px;
+  text-align: center;
+  border-bottom: 1px solid rgba(255,255,255,0.15);
+}
+
+/* MODAL */
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.65);
+  display: none;
+  justify-content: center;
+  align-items: center;
+  z-index: 10;
+}
+
+.modal-box {
+  width: 90%;
+  max-width: 320px;
+  background: var(--glass-bg);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--glass-border);
+  border-radius: 18px;
+  padding: 18px;
+  animation: scaleIn 0.35s ease;
+}
+
+.close-btn {
+  position: absolute;
+  top: 10px;
+  right: 12px;
+  background: none;
+  color: #fff;
+  font-size: 18px;
+}
+
+input, select {
+  width: 100%;
+  padding: 10px;
+  border-radius: 12px;
+  border: none;
+  margin-bottom: 10px;
+}
+
+.save-btn {
+  width: 100%;
+  background: linear-gradient(135deg, var(--accent), var(--accent-2));
+}
+
+/* ANIMATIONS */
+@keyframes fadeIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes scaleIn {
+  from { opacity: 0; transform: scale(0.92); }
+  to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes rowIn {
+  from { opacity: 0; transform: translateY(6px); }
+  to { opacity: 1; transform: translateY(0); }
+}
 </style>
 </head>
+
 <body>
+<div class="app glass">
 
 <h1>📷 Scan → Quantity → Excel</h1>
-<p>Scan barcode, enter quantity/unit, save to Excel.</p>
+<p>Scan barcode, enter quantity & unit</p>
 
 <video id="video" autoplay muted playsinline></video>
 <div class="status" id="status">Status: Idle</div>
 
-<button onclick="startScan()">Start Scan</button>
-<button onclick="stopScan()">Stop Scan</button>
-<button onclick="exportExcel()">Export Excel</button>
+<div class="actions">
+  <button class="start" onclick="startScan()">Start</button>
+  <button class="stop" onclick="stopScan()">Stop</button>
+  <button class="export" onclick="exportExcel()">⬇ Export Excel</button>
+</div>
 
+<div class="table-wrap">
 <table>
-  <thead>
-    <tr>
-      <th>#</th>
-      <th>Barcode</th>
-      <th>Quantity</th>
-      <th>Unit</th>
-      <th>Timestamp</th>
-    </tr>
-  </thead>
-  <tbody id="tableBody"></tbody>
+<thead>
+<tr>
+<th>#</th><th>Barcode</th><th>Qty</th><th>Unit</th><th>Time</th>
+</tr>
+</thead>
+<tbody id="tableBody"></tbody>
 </table>
+</div>
+</div>
 
-<!-- INPUT MODAL -->
+<!-- MODAL -->
 <div class="modal" id="inputModal">
-  <div class="modal-box">
-    <button class="close-btn" onclick="closeModal()">✖</button>
-    <h3>Enter Details</h3>
-    <p><strong>Barcode:</strong> <span id="barcodeText"></span></p>
+<div class="modal-box">
+<button class="close-btn" onclick="closeModal()">✖</button>
+<h3>Enter Details</h3>
+<p><strong>Barcode:</strong> <span id="barcodeText"></span></p>
 
-    <label>Quantity *</label>
-    <input id="quantityInput" type="number" min="1" placeholder="Enter quantity" inputmode="numeric" />
+<input id="quantityInput" type="number" min="1" placeholder="Quantity">
+<select id="unitInput">
+<option value="">Select Unit</option>
+<option>Inch</option>
+<option>Sheets</option>
+</select>
 
-    <label>Unit *</label>
-    <select id="unitInput">
-      <option value="">Select unit</option>
-      <option value="Inch">Inch</option>
-      <option value="Sheets">Sheets</option>
-    </select>
-
-    <button onclick="saveEntry()">Save</button>
-  </div>
+<button class="save-btn" onclick="saveEntry()">Save</button>
+</div>
 </div>
 
 <script>
@@ -80,125 +270,72 @@ const barcodeText = document.getElementById("barcodeText");
 const quantityInput = document.getElementById("quantityInput");
 const unitInput = document.getElementById("unitInput");
 
-let codeReader;
-let scanning = false;
-let currentBarcode = "";
-let scanData = [];
-let videoStream = null;
+let codeReader, scanning=false, currentBarcode="", scanData=[], videoStream=null;
 
 async function startScan() {
   if (scanning) return;
   scanning = true;
-  statusEl.textContent = "Status: Scanning...";
-
+  statusEl.textContent = "Status: Scanning…";
   codeReader = new ZXing.BrowserMultiFormatReader();
-
   try {
-    const constraints = { video: { facingMode: { exact: "environment" } } };
-    videoStream = await navigator.mediaDevices.getUserMedia(constraints);
+    videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
     video.srcObject = videoStream;
-
-    codeReader.decodeFromVideoDevice(null, video, (result, err) => {
-      if (result) handleBarcode(result.text);
-    });
-
-  } catch (err) {
-    console.warn("Rear camera not found, using any camera.", err);
-    try {
-      videoStream = await navigator.mediaDevices.getUserMedia({ video: true });
-      video.srcObject = videoStream;
-
-      codeReader.decodeFromVideoDevice(null, video, (result, err) => {
-        if (result) handleBarcode(result.text);
-      });
-    } catch (err2) {
-      console.error("Camera error:", err2);
-      alert("Could not access camera. Make sure to allow camera permissions and use HTTPS.");
-      scanning = false;
-    }
+    codeReader.decodeFromVideoDevice(null, video, (res)=>{ if(res) handleBarcode(res.text); });
+  } catch {
+    alert("Camera access required");
+    scanning=false;
   }
+}
+
+function stopScan() {
+  scanning=false;
+  if(codeReader) codeReader.reset();
+  if(videoStream) videoStream.getTracks().forEach(t=>t.stop());
+  statusEl.textContent="Status: Stopped";
 }
 
 function handleBarcode(code) {
   stopScan();
   currentBarcode = code.trim();
-  showModal(currentBarcode);
-}
-
-function stopScan() {
-  scanning = false;
-  if (codeReader) codeReader.reset();
-  if (videoStream) {
-    videoStream.getTracks().forEach(track => track.stop());
-    video.srcObject = null;
-  }
-  statusEl.textContent = "Status: Stopped";
-}
-
-function showModal(code) {
-  barcodeText.textContent = code;
-  quantityInput.value = "";
-  unitInput.value = "";
-  modal.style.display = "flex";
+  barcodeText.textContent = currentBarcode;
+  modal.style.display="flex";
+  quantityInput.value="";
+  unitInput.value="";
   quantityInput.focus();
 }
 
-function closeModal() {
-  modal.style.display = "none";
-  currentBarcode = "";
+function closeModal(){
+  modal.style.display="none";
   startScan();
 }
 
-function saveEntry() {
-  const quantity = quantityInput.value.trim();
-  const unit = unitInput.value;
-
-  if (!quantity || !unit) {
-    alert("Both Quantity and Unit are required");
+function saveEntry(){
+  if(!quantityInput.value || !unitInput.value){
+    alert("Quantity and unit required");
     return;
   }
-
-  const row = {
-    Index: scanData.length + 1,
+  const row={
+    Index: scanData.length+1,
     Barcode: currentBarcode,
-    Quantity: quantity,
-    Unit: unit,
+    Quantity: quantityInput.value,
+    Unit: unitInput.value,
     Timestamp: new Date().toLocaleString()
   };
-
   scanData.push(row);
-  appendRow(row);
-
-  modal.style.display = "none";
+  const tr=document.createElement("tr");
+  tr.innerHTML=`<td>${row.Index}</td><td>${row.Barcode}</td><td>${row.Quantity}</td><td>${row.Unit}</td><td>${row.Timestamp}</td>`;
+  tableBody.appendChild(tr);
+  modal.style.display="none";
   startScan();
 }
 
-function appendRow(row) {
-  const tr = document.createElement("tr");
-  tr.innerHTML = `
-    <td>${row.Index}</td>
-    <td>${row.Barcode}</td>
-    <td>${row.Quantity}</td>
-    <td>${row.Unit}</td>
-    <td>${row.Timestamp}</td>
-  `;
-  tableBody.appendChild(tr);
-}
-
-function exportExcel() {
-  if (scanData.length === 0) {
-    alert("No data to export");
-    return;
-  }
-
-  const ws = XLSX.utils.json_to_sheet(scanData);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "Scans");
-
-  const fileName = `scans_${new Date().toISOString().split("T")[0]}.xlsx`;
-  XLSX.writeFile(wb, fileName);
+function exportExcel(){
+  if(!scanData.length){ alert("No data"); return; }
+  const ws=XLSX.utils.json_to_sheet(scanData);
+  const wb=XLSX.utils.book_new();
+  XLSX.utils.book_append_sheet(wb,ws,"Scans");
+  XLSX.writeFile(wb,`scans_${new Date().toISOString().split("T")[0]}.xlsx`);
 }
 </script>
-
 </body>
 </html>
