@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="UTF-8">
-<title>Scan → Quantity → Excel</title>
+<title>Inventory Scanner</title>
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
 
 <!-- ZXing -->
@@ -154,6 +154,14 @@ td {
   border-bottom: 1px solid rgba(255,255,255,0.15);
 }
 
+.delete-btn {
+  cursor: pointer;
+  color: var(--danger);
+  font-weight: bold;
+  transition: transform 0.2s ease;
+}
+.delete-btn:hover { transform: scale(1.2); }
+
 /* MODAL */
 .modal {
   position: fixed;
@@ -199,28 +207,17 @@ input, select {
 }
 
 /* ANIMATIONS */
-@keyframes fadeIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
-
-@keyframes scaleIn {
-  from { opacity: 0; transform: scale(0.92); }
-  to { opacity: 1; transform: scale(1); }
-}
-
-@keyframes rowIn {
-  from { opacity: 0; transform: translateY(6px); }
-  to { opacity: 1; transform: translateY(0); }
-}
+@keyframes fadeIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
+@keyframes scaleIn { from { opacity: 0; transform: scale(0.92); } to { opacity: 1; transform: scale(1); } }
+@keyframes rowIn { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
 </style>
 </head>
 
 <body>
 <div class="app glass">
 
-<h1>📷 Scan → Quantity → Excel</h1>
-<p>Scan barcode, enter quantity & unit</p>
+<h1>Inventory Scanner</h1>
+<p>Scan barcode, Enter quantity & Select unit type</p>
 
 <video id="video" autoplay muted playsinline></video>
 <div class="status" id="status">Status: Idle</div>
@@ -235,7 +232,12 @@ input, select {
 <table>
 <thead>
 <tr>
-<th>#</th><th>Barcode</th><th>Qty</th><th>Unit</th><th>Time</th>
+<th>❌</th>
+<th>#</th>
+<th>Barcode</th>
+<th>Qty</th>
+<th>Unit</th>
+<th>Time</th>
 </tr>
 </thead>
 <tbody id="tableBody"></tbody>
@@ -261,6 +263,9 @@ input, select {
 </div>
 </div>
 
+<!-- AUDIO -->
+<audio id="scanSound" src="https://actions.google.com/sounds/v1/alarms/beep_short.ogg" preload="auto"></audio>
+
 <script>
 const video = document.getElementById("video");
 const statusEl = document.getElementById("status");
@@ -269,35 +274,39 @@ const modal = document.getElementById("inputModal");
 const barcodeText = document.getElementById("barcodeText");
 const quantityInput = document.getElementById("quantityInput");
 const unitInput = document.getElementById("unitInput");
+const scanSound = document.getElementById("scanSound");
 
 let codeReader, scanning=false, currentBarcode="", scanData=[], videoStream=null;
 
 async function startScan() {
-  if (scanning) return;
-  scanning = true;
-  statusEl.textContent = "Status: Scanning…";
-  codeReader = new ZXing.BrowserMultiFormatReader();
-  try {
-    videoStream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: "environment" } });
-    video.srcObject = videoStream;
-    codeReader.decodeFromVideoDevice(null, video, (res)=>{ if(res) handleBarcode(res.text); });
-  } catch {
-    alert("Camera access required");
-    scanning=false;
-  }
+  if(scanning) return;
+  scanning=true;
+  statusEl.textContent="Status: Scanning…";
+  codeReader=new ZXing.BrowserMultiFormatReader();
+  try{
+    videoStream=await navigator.mediaDevices.getUserMedia({video:{facingMode:"environment"}});
+    video.srcObject=videoStream;
+    codeReader.decodeFromVideoDevice(null, video, (res)=>{
+      if(res) handleBarcode(res.text);
+    });
+  } catch { alert("Camera access required"); scanning=false; }
 }
 
-function stopScan() {
+function stopScan(){
   scanning=false;
   if(codeReader) codeReader.reset();
   if(videoStream) videoStream.getTracks().forEach(t=>t.stop());
   statusEl.textContent="Status: Stopped";
 }
 
-function handleBarcode(code) {
+function handleBarcode(code){
+  // Haptic & sound feedback
+  if("vibrate" in navigator) navigator.vibrate(150);
+  scanSound.play().catch(()=>{});
+  
   stopScan();
-  currentBarcode = code.trim();
-  barcodeText.textContent = currentBarcode;
+  currentBarcode=code.trim();
+  barcodeText.textContent=currentBarcode;
   modal.style.display="flex";
   quantityInput.value="";
   unitInput.value="";
@@ -310,7 +319,7 @@ function closeModal(){
 }
 
 function saveEntry(){
-  if(!quantityInput.value || !unitInput.value){
+  if(!quantityInput.value||!unitInput.value){
     alert("Quantity and unit required");
     return;
   }
@@ -322,14 +331,51 @@ function saveEntry(){
     Timestamp: new Date().toLocaleString()
   };
   scanData.push(row);
-  const tr=document.createElement("tr");
-  tr.innerHTML=`<td>${row.Index}</td><td>${row.Barcode}</td><td>${row.Quantity}</td><td>${row.Unit}</td><td>${row.Timestamp}</td>`;
-  tableBody.appendChild(tr);
+  appendRow(row);
   modal.style.display="none";
   startScan();
 }
 
+function appendRow(row){
+  const tr=document.createElement("tr");
+  tr.innerHTML=`
+    <td><span class="delete-btn" onclick="deleteRow(${row.Index})">❌</span></td>
+    <td contenteditable="true">${row.Index}</td>
+    <td contenteditable="true">${row.Barcode}</td>
+    <td contenteditable="true">${row.Quantity}</td>
+    <td contenteditable="true">${row.Unit}</td>
+    <td>${row.Timestamp}</td>
+  `;
+  tableBody.appendChild(tr);
+}
+
+function deleteRow(index){
+  scanData=scanData.filter(r=>r.Index!==index);
+  renderTable();
+}
+
+function renderTable(){
+  tableBody.innerHTML="";
+  scanData.forEach((r,i)=>{
+    r.Index=i+1;
+    appendRow(r);
+  });
+}
+
 function exportExcel(){
+  // Update scanData from edited table
+  const rows = tableBody.querySelectorAll("tr");
+  scanData=[];
+  rows.forEach(r=>{
+    const tds=r.querySelectorAll("td");
+    scanData.push({
+      Index: parseInt(tds[1].textContent),
+      Barcode: tds[2].textContent,
+      Quantity: tds[3].textContent,
+      Unit: tds[4].textContent,
+      Timestamp: tds[5].textContent
+    });
+  });
   if(!scanData.length){ alert("No data"); return; }
   const ws=XLSX.utils.json_to_sheet(scanData);
   const wb=XLSX.utils.book_new();
